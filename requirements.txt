@@ -1,0 +1,10 @@
+# PyTorch с CUDA здесь намеренно не указан: start.bat ставит его отдельно
+# с официального индекса PyTorch (иначе pip на Windows тянет CPU-сборку).
+transformers>=4.56
+bitsandbytes>=0.45
+accelerate>=1.0
+flask>=3.0
+requests>=2.31
+beautifulsoup4>=4.12
+safetensors>=0.4
+pyautogui>=0.9.54

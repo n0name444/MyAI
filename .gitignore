@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+chat_history.json
+memory.sqlite3
+model_offload/
+myai.log
+*.bak
+logs/
+
+# Локальные базы данных
+*.sqlite3
+*.db

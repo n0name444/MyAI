@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="myai-token" content="{{ token }}">
+<title>MyAI — локальный AI</title>
+<link rel="stylesheet" href="/static/app.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/static/calc.css?v={{ asset_v }}">
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar" id="sidebar" aria-label="Боковая панель">
+  <div class="brand"><div class="mark">AI</div><div><strong>MyAI</strong><small>локальный ассистент</small></div></div>
+  <button class="new" id="newBtn">＋ Новый чат</button>
+  <nav class="side-nav" aria-label="Разделы">
+    <button class="side-link" id="calcHistoryBtn"><span aria-hidden="true">🧮</span> Вычисления</button>
+    <button class="side-link" id="memoryBtn"><span aria-hidden="true">🧠</span> Память</button>
+    <button class="side-link" id="capsBtn"><span aria-hidden="true">✨</span> Что умеет MyAI</button>
+  </nav>
+  <div class="side-title">Система</div>
+  <div class="side-info">
+    <div class="status-row"><span class="dot" id="dot"></span><span id="sys">Проверка...</span></div>
+    <details class="side-more"><summary>Подробнее</summary><div><span id="modelInfo">Модель: проверка...</span><br><span id="gpuInfo">GPU: проверка...</span><br><span id="memInfo">Память: проверка...</span></div></details>
+    <button class="link-btn" id="reloadBtn" hidden>Повторить загрузку модели</button>
+  </div>
+  <footer id="ver">MyAI</footer>
+</aside>
+<div class="backdrop" id="drawerBackdrop" hidden></div>
+<section class="main">
+<header class="topbar">
+  <div class="top-left">
+    <button class="icon-btn menu-btn" id="menuBtn" aria-label="Открыть меню" aria-expanded="false" aria-controls="sidebar">☰</button>
+    <div><span class="title">Разговор</span><span class="sub" id="routeTop"></span></div>
+  </div>
+  <div class="top-actions">
+    <details class="top-menu" id="topMenu">
+      <summary class="icon-btn" aria-label="Ещё действия">⋯</summary>
+      <div class="top-menu-list">
+        <button type="button" id="reloadMenuBtn">Перезагрузить модель</button>
+        <button type="button" class="danger" id="clearBtn" title="Удаляет историю чата, имя и заметки из памяти. Журнал вычислений и калькуляторы не затрагиваются.">Стереть историю и память…</button>
+      </div>
+    </details>
+  </div>
+</header>
+<main class="chat" id="chat" role="log" aria-label="Диалог" aria-live="off"></main>
+<button class="jump" id="jumpBtn" type="button" aria-label="Прокрутить вниз" hidden>↓</button>
+</section>
+</div>
+<div class="sr-only" id="srStatus" role="status" aria-live="polite"></div>
+
+<div class="calc-overlay" id="calcOverlay" role="dialog" aria-modal="true" aria-labelledby="calcTitle">
+  <section class="calc-panel" tabindex="-1">
+    <header class="calc-head">
+      <div><h2 id="calcTitle">Вычисления</h2><p>Журнал расчётов и ваши мини-калькуляторы</p></div>
+      <button class="icon-btn" id="calcCloseBtn" aria-label="Закрыть">✕</button>
+    </header>
+    <nav class="calc-tabs" id="calcTabs" role="tablist" aria-label="Разделы панели">
+      <button type="button" role="tab" id="tabJournal" aria-controls="paneJournal" aria-selected="true" data-tab="journal">Журнал</button>
+      <button type="button" role="tab" id="tabCalculators" aria-controls="paneCalculators" aria-selected="false" tabindex="-1" data-tab="calculators">Калькуляторы</button>
+      <button type="button" role="tab" id="tabExchange" aria-controls="paneExchange" aria-selected="false" tabindex="-1" data-tab="exchange">Обмен</button>
+    </nav>
+    <div class="calc-notice" id="calcNotice" role="status" aria-live="polite" hidden></div>
+    <div class="calc-body">
+
+      <!-- Журнал -->
+      <div class="calc-pane" id="paneJournal" data-pane="journal" role="tabpanel" aria-labelledby="tabJournal">
+        <details class="calc-stats-box" id="calcStatsBox">
+          <summary><span id="calcStatLine">Загрузка…</span><span class="calc-more">Подробнее</span></summary>
+          <div class="calc-stats-body">
+            <div class="calc-stats">
+              <div class="calc-stat"><strong id="calcStatTotal">—</strong><span>Записей в журнале</span></div>
+              <div class="calc-stat"><strong id="calcStatActive">—</strong><span>Активных дней</span></div>
+              <div class="calc-stat"><strong id="calcStatTop">—</strong><span>Частая операция</span></div>
+            </div>
+            <div class="calc-stats-row"><span class="calc-hint">Расчёты по дням · UTC</span><select id="calcStatsDays" aria-label="Период статистики"><option value="7">7 дней</option><option value="14" selected>14 дней</option><option value="30">30 дней</option><option value="90">90 дней</option></select></div>
+            <div class="calc-chart" id="calcDailyChart" aria-label="График количества расчётов по дням"></div>
+            <div class="calc-ops" id="calcOperationStats"></div>
+          </div>
+        </details>
+        <div class="calc-filters">
+          <input id="calcQuery" type="search" placeholder="Поиск по выражению…" aria-label="Поиск по выражению">
+          <input id="calcDateFrom" type="date" aria-label="Дата с">
+          <input id="calcDateTo" type="date" aria-label="Дата по">
+          <button type="button" id="calcResetBtn" hidden>Сбросить</button>
+          <a class="btn" id="calcExportBtn" href="/calculator/export.csv">Экспорт CSV</a>
+          <details class="calc-menu"><summary aria-label="Ещё действия с журналом">⋯</summary><div class="calc-menu-list"><button type="button" class="danger" id="calcClearBtn">Очистить журнал…</button></div></details>
+        </div>
+        <div class="calc-count" id="calcCount"></div>
+        <div class="calc-error" id="calcError" hidden></div>
+        <div class="calc-list" id="calcList"><div class="calc-empty">Загрузка…</div></div>
+      </div>
+
+      <!-- Калькуляторы -->
+      <div class="calc-pane" id="paneCalculators" data-pane="calculators" role="tabpanel" aria-labelledby="tabCalculators" hidden>
+        <div id="calcMainView">
+          <div class="calc-row"><button type="button" class="primary" id="calcNewBtn">+ Новый калькулятор</button></div>
+
+          <details class="calc-fold" id="calcLibraryBox">
+            <summary>Добавить из шаблонов</summary>
+            <div class="calc-fold-body">
+              <select id="scenarioLibraryCategory" aria-label="Категория шаблонов"><option value="">Все категории</option><option>Финансы</option><option>Покупки</option><option>Строительство</option><option>Повседневные</option></select>
+              <div class="calc-lib" id="scenarioLibrary"><span class="calc-hint">Загрузка шаблонов…</span></div>
+            </div>
+          </details>
+
+          <details class="calc-fold" id="calcQuickBox">
+            <summary>Быстрая формула</summary>
+            <div class="calc-fold-body">
+              <div class="calc-chips" id="calcTemplates"></div>
+              <label class="calc-hint" for="formulaExpression">Введите формулу: для каждой переменной появится поле для числа.</label>
+              <input id="formulaExpression" maxlength="200" placeholder="Например: price * quantity" autocomplete="off">
+              <div class="calc-fields" id="formulaFields" hidden></div>
+              <div class="calc-row"><button type="button" class="primary" id="formulaRunBtn">Посчитать</button><input id="formulaName" maxlength="60" placeholder="Название, чтобы сохранить" aria-label="Название формулы"><button type="button" id="formulaSaveBtn">Сохранить</button></div>
+              <div class="calc-result" id="formulaResult" aria-live="polite"></div>
+              <div class="calc-error" id="formulaError" hidden></div>
+              <div class="calc-chips" id="calcSavedFormulas"></div>
+              <div class="calc-hint">Разрешены числа, скобки и арифметические операции. Имена переменных: латинские буквы и цифры, до 20 знаков.</div>
+            </div>
+          </details>
+
+          <h4 class="calc-section-title" style="margin:16px 0 0">Мои калькуляторы</h4>
+          <div class="calc-cards" id="calcSavedScenarios"><div class="calc-empty">Загрузка…</div></div>
+        </div>
+
+        <div class="calc-edit-view" id="calcEditView" hidden>
+          <div class="calc-edit-head"><button type="button" class="link" id="scenarioBackBtn">← К списку</button><h3 id="calcEditTitle">Новый калькулятор</h3></div>
+          <div class="calc-edit-grid">
+            <label>Название<input id="scenarioName" maxlength="60" placeholder="Например: Расчёт заказа" autocomplete="off"></label>
+            <label>Категория<select id="scenarioCategory"><option>Пользовательские</option><option>Финансы</option><option>Покупки</option><option>Строительство</option><option>Повседневные</option></select></label>
+          </div>
+          <label>Описание (необязательно)<input id="scenarioDescription" maxlength="240" autocomplete="off"></label>
+          <section aria-label="Что вводить">
+            <h4>1. Что вводить</h4>
+            <div class="calc-hint">Параметры — числа, которые вы будете вводить при расчёте. Имя нужно, чтобы использовать параметр в формуле; оно подставится само.</div>
+            <div class="scenario-cols"><span>Подпись</span><span>Имя в формулах</span><span></span></div>
+            <div id="scenarioInputRows" class="scenario-rows"></div>
+            <div><button type="button" id="scenarioAddInput">+ Параметр</button></div>
+          </section>
+          <section aria-label="Как считать">
+            <h4>2. Как считать</h4>
+            <div class="calc-hint">Шаги выполняются по порядку. В формуле используйте имена параметров и результатов предыдущих шагов, например <code>price * quantity</code>. Откуда брать значения, подставится само; спорные случаи выберите вручную.</div>
+            <div id="scenarioStepRows" class="scenario-rows"></div>
+            <div><button type="button" id="scenarioAddStep">+ Шаг</button></div>
+          </section>
+          <div class="calc-row"><button type="button" class="primary" id="scenarioSaveBtn">Сохранить калькулятор</button><button type="button" id="scenarioCancelBtn">Отмена</button></div>
+          <div class="calc-error" id="scenarioError" role="alert" hidden></div>
+        </div>
+      </div>
+
+      <!-- Обмен -->
+      <div class="calc-pane" id="paneExchange" data-pane="exchange" role="tabpanel" aria-labelledby="tabExchange" hidden>
+        <p class="calc-hint" style="margin:0 0 10px">Каталог локальный: он есть только на этом компьютере. Чтобы передать калькулятор на другой компьютер, используйте экспорт и импорт файла ниже.</p>
+        <div class="calc-row"><input id="scenarioCommunitySearch" type="search" maxlength="80" placeholder="Поиск опубликованных…" aria-label="Поиск в каталоге"><button type="button" id="scenarioCommunityRefresh">Обновить</button></div>
+        <div class="calc-cards" id="scenarioCommunity"><div class="calc-empty">Загрузка…</div></div>
+        <h4 style="margin:18px 0 8px">Файл</h4>
+        <div class="calc-row"><a class="btn" id="scenarioExportBtn" href="/calculator/scenarios/export.json">Экспорт всех калькуляторов (JSON)</a><label class="btn" for="scenarioImportFile">Импорт из файла…</label><input id="scenarioImportFile" type="file" accept="application/json,.json" hidden></div>
+        <p class="calc-hint">Импорт принимает файл до 64 КБ и до 100 калькуляторов. Если хотя бы один не проходит проверку или его имя уже занято, не добавляется ни один.</p>
+      </div>
+
+    </div>
+  </section>
+</div>
+
+<div class="composer-wrap">
+  <form class="composer" id="form">
+    <textarea id="input" rows="1" placeholder="Напишите сообщение..." aria-label="Сообщение"></textarea>
+    <button class="send" id="send" type="submit" title="Отправить" aria-label="Отправить">↑</button>
+  </form>
+  <div class="hint" id="hint">Enter — отправить · Shift+Enter — новая строка · Esc — остановить ответ</div>
+</div>
+
+<div class="overlay" id="capsOverlay" role="dialog" aria-modal="true" aria-labelledby="capsTitle" hidden>
+  <div class="modal">
+    <header><h2 id="capsTitle">Что умеет MyAI</h2><button class="icon-btn" id="capsClose" type="button" aria-label="Закрыть">✕</button></header>
+    <p style="margin-top:0">Нажмите на пример, чтобы вставить его в поле ввода. Сообщение не отправится, пока вы не нажмёте Enter.</p>
+    <div class="caps" id="capsGrid"></div>
+  </div>
+</div>
+
+<div class="overlay" id="memoryOverlay" role="dialog" aria-modal="true" aria-labelledby="memoryTitle" hidden>
+  <div class="modal">
+    <header><h2 id="memoryTitle">Память</h2><button class="icon-btn" id="memoryClose" type="button" aria-label="Закрыть">✕</button></header>
+    <p class="mem-hint">MyAI помнит эти заметки между разговорами и учитывает их в ответах. Добавить заметку можно и в чате: «Запомни: …».</p>
+    <div class="mem-add"><input id="memoryInput" maxlength="500" placeholder="Новая заметка, например: я люблю аниме про гонки" aria-label="Новая заметка" autocomplete="off"><button type="button" id="memoryAddBtn">Запомнить</button></div>
+    <div class="mem-error" id="memoryError" role="alert" hidden></div>
+    <div class="mem-count" id="memoryCount"></div>
+    <ul class="mem-list" id="memoryList"></ul>
+    <div class="mem-empty" id="memoryEmpty" hidden>Пока ничего не запомнено.<br>Напишите в чате «Запомни: …» или добавьте заметку выше.</div>
+  </div>
+</div>
+
+<div class="overlay" id="dialogOverlay" role="alertdialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogText" hidden>
+  <div class="modal small">
+    <h2 id="dialogTitle"></h2>
+    <p id="dialogText"></p>
+    <div class="modal-actions"><button type="button" id="dialogCancel">Отмена</button><button type="button" class="danger-fill" id="dialogOk">Подтвердить</button></div>
+  </div>
+</div>
+
+<script src="/static/app.js?v={{ asset_v }}" defer></script>
+<script src="/static/calc.js?v={{ asset_v }}" defer></script>
+<script src="/static/memory.js?v={{ asset_v }}" defer></script>
+</body>
+</html>
