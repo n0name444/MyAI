@@ -1,4 +1,5 @@
 import os, sqlite3, tempfile, unittest
+from contextlib import closing
 from datetime import datetime, timezone
 from unittest import mock
 from tools.calculator_scenarios import CalculatorScenarios
@@ -89,7 +90,7 @@ class CalculatorSharingTests(unittest.TestCase):
     def test_unpublish_removes_ratings(self):
         pid=self.sharing.publish(self.store,self.sid); self.sharing.rate(pid,5)
         self.assertTrue(self.sharing.unpublish(pid)); self.assertFalse(self.sharing.unpublish(pid))
-        with sqlite3.connect(self.sharing.db_path) as db:
+        with closing(sqlite3.connect(self.sharing.db_path)) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM ratings").fetchone()[0],0)
 
 if __name__=="__main__": unittest.main()
