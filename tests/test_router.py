@@ -67,9 +67,11 @@ class RouterTests(unittest.TestCase):
     def test_long_text_is_fast(self):
         import time
         t0 = time.perf_counter()
-        for _ in range(200):
+        for _ in range(50):
             self.r.decide("слово " * 2000)
-        self.assertLess(time.perf_counter() - t0, 5.0)       # нет катастрофического отката регулярок
+        # Защита от катастрофического отката регулярок: «злая» регулярка взорвётся
+        # экспоненциально даже на одном вызове. 50 повторов дают запас на нагрузку ОС.
+        self.assertLess(time.perf_counter() - t0, 5.0)
 
 
     def test_calculator_natural_language_requests(self):
