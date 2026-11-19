@@ -255,13 +255,18 @@ class ChatBot:
             lines.append(f"#{row['id']} [{stamp}] {row['expression']} → {row['result'] or row['answer']}")
         return "\n".join(lines)
 
-    def _calculator_replay(self, text: str) -> str:
-        match = re.search(r"\b(?:расч[её]т|вычисление)\s+#?(\d+)\b", text.lower())
-        row = self.calculator_history.get(int(match.group(1))) if match else self.calculator_history.last()
+    def replay_calculation(self, calculation_id: Optional[int] = None) -> str:
+        """Повторяет расчёт по id; без id — последний. Общий метод для чата и API."""
+        row = (self.calculator_history.get(int(calculation_id))
+               if calculation_id is not None else self.calculator_history.last())
         if not row:
             return "Не нашёл расчёт для повтора."
         answer = self._calculator_answer(row["expression"])
         return f"Повтор расчёта #{row['id']}:\n{answer}"
+
+    def _calculator_replay(self, text: str) -> str:
+        match = re.search(r"\b(?:расч[её]т|вычисление)\s+#?(\d+)\b", text.lower())
+        return self.replay_calculation(int(match.group(1)) if match else None)
 
     def _calculator_use_last(self, text: str) -> str:
         last = self.calculator_history.last()

@@ -75,6 +75,14 @@ class RouteTests(Base):
         answer = b.reply("последний результат")["response"]
         self.assertNotIn("\\n", answer)        # литерального «\n» быть не должно
         self.assertIn("15\nРасчёт:", answer)   # настоящий перенос — должен
+ 
+    def test_replay_calculation_public_api(self):
+        b = self.make()
+        b.reply("Посчитай 2 + 2")
+        b.reply("Посчитай 3 + 3")
+        self.assertIn("Повтор расчёта #2", b.replay_calculation())   # без id — последний
+        self.assertIn("2 + 2 = 4", b.replay_calculation(1))          # по id — конкретный
+        self.assertIn("Не нашёл", b.replay_calculation(999))         # несуществующий id
 
     def test_name_false_positive(self):
         b = self.make()

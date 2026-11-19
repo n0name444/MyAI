@@ -524,7 +524,7 @@ def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool =
             row = bot.calculator_history.get(calculation_id)
             if row is None:
                 return jsonify({"error": "Расчёт не найден."}), 404
-            answer = bot._calculator_replay(f"повтори расчёт {calculation_id}")
+            answer = bot.replay_calculation(calculation_id)
             return jsonify({"id": calculation_id, "expression": row["expression"], "response": answer})
         except Exception:
             log.exception("/calculator/replay")
