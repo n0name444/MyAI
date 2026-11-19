@@ -886,7 +886,7 @@ class ChatBot:
             yield self._finish(user_text, self._calculator_history_command(user_text), route)
         elif route == "CALC_LAST":
             last = self.calculator_history.last()
-            answer = (f"Последний результат: {last['result']}\\nРасчёт: {last['expression']}"
+            answer = (f"Последний результат: {last['result']}\nРасчёт: {last['expression']}"
                       if last and last.get("result") is not None else
                       "В истории пока нет вычислений с числовым результатом.")
             yield self._finish(user_text, answer, route)

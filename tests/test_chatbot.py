@@ -68,6 +68,13 @@ class RouteTests(Base):
         self.assertIn("Повтор расчёта #2", b.reply("повтори последний расчёт")["response"])
         self.assertIn("Иван", b.reply("Меня зовут Иван")["response"])
         self.assertEqual(b.reply("как меня зовут?")["response"], "Тебя зовут Иван.")
+        
+    def test_calc_last_result_is_two_lines(self):
+        b = self.make()
+        b.reply("Посчитай 10 + 5")
+        answer = b.reply("последний результат")["response"]
+        self.assertNotIn("\\n", answer)        # литерального «\n» быть не должно
+        self.assertIn("15\nРасчёт:", answer)   # настоящий перенос — должен
 
     def test_name_false_positive(self):
         b = self.make()
