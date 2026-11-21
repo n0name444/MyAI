@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
+
 from tools.calculator import SafeCalculator
 
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,19}$")
@@ -57,7 +58,8 @@ def evaluate_formula(expression: str, variables: dict) -> Decimal | int | float:
             raise ValueError(f"Переменная {key}: нужно указать число.") from None
         if not number.is_finite() or abs(number) > Decimal("1e100"):
             raise ValueError(f"Переменная {key}: число вне допустимого диапазона.")
-        normalized[key] = SafeCalculator.format_number(number)
+           # Только десятичная запись без экспоненты: SafeCalculator не принимает «e» в литералах.
+        normalized[key] = format(number.normalize(), "f")
     try:
         tree = ast.parse(expression, mode="eval")
     except (SyntaxError, ValueError, MemoryError):

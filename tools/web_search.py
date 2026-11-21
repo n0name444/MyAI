@@ -186,6 +186,26 @@ class WebSearch:
             return bool(infos) and all(ipaddress.ip_address(i[4][0]).is_global for i in infos)
         except Exception:
             return False
+    @staticmethod
+    def _peer_is_public(response) -> bool:
+        """IP фактического соединения должен быть публичным: DNS мог «перепривязаться»
+        между проверкой адреса и самим запросом (rebinding). Проверяем до чтения тела."""
+        sock = None
+        for get in (lambda r: r.raw._connection.sock,
+                    lambda r: r.raw._fp.fp.raw._sock):
+            try:
+                sock = get(response)
+                if sock is not None:
+                    break
+            except Exception:
+                continue
+        if sock is None:
+            log.warning("[WEB] не удалось проверить IP соединения — страница отклонена")
+            return False
+        try:
+            return ipaddress.ip_address(sock.getpeername()[0]).is_global
+        except (OSError, ValueError, IndexError):
+            return False
 
     @staticmethod
     def extract_text(raw: bytes, max_chars: int = 1800) -> str:
@@ -207,6 +227,9 @@ class WebSearch:
                 if not self.is_public_url(current):
                     return ""
                 r = requests.get(current, headers=self.headers, timeout=self.timeout, stream=True, allow_redirects=False)
+                if not self._peer_is_public(r):
+                    r.close()
+                    return ""
                 if r.status_code in (301, 302, 303, 307, 308) and r.headers.get("Location"):
                     current = urllib.parse.urljoin(current, r.headers["Location"])
                     r.close()

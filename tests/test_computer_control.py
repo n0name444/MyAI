@@ -113,6 +113,40 @@ class ExecuteTests(unittest.TestCase):
         if ctypes.sizeof(ctypes.c_size_t) == 8:
             self.assertEqual(ctypes.sizeof(INPUT), 40)    # размер, который ждёт SendInput на x64
 
-
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class TestInputSafety(unittest.TestCase):
+    def test_terminals_and_ssh_blocked(self):
+        for exe in ("mintty.exe", "putty.exe", "kitty.exe", "wezterm-gui.exe",
+                    "alacritty.exe", "tabby.exe", "mstsc.exe", "totalcmd64.exe", "wsl.exe"):
+            self.assertTrue(cc._input_blocked(exe), exe)
+
+    def test_ide_override(self):
+        with mock.patch.object(cc, "_ALLOW_IDE_INPUT", False):
+            self.assertTrue(cc._input_blocked("code.exe"))
+        with mock.patch.object(cc, "_ALLOW_IDE_INPUT", True):
+            self.assertFalse(cc._input_blocked("code.exe"))
+
+    def test_regular_apps_allowed(self):
+        for exe in ("notepad.exe", "chrome.exe", "winword.exe", "telegram.exe"):
+            self.assertFalse(cc._input_blocked(exe), exe)
+
+    def test_self_window_is_browser_tab_not_folder(self):
+        self.assertTrue(cc._is_self_window("MyAI — Google Chrome", "chrome.exe"))
+        self.assertFalse(cc._is_self_window("MyAI", "explorer.exe"))
+
+    def test_type_text_aborts_when_focus_changes(self):
+        tool = cc.ComputerControl()
+        notepad, terminal = (7, "Безымянный — Блокнот", "notepad.exe"), (8, "cmd", "cmd.exe")
+        def fake_send(text, guard=None):
+            guard()  # имитируем проверку перед первым блоком
+        with mock.patch.object(cc, "IS_WINDOWS", True), \
+             mock.patch.object(cc, "pyautogui", mock.Mock()), \
+             mock.patch.object(cc, "_foreground", side_effect=[notepad, terminal]), \
+             mock.patch.object(cc, "_send_unicode", fake_send):
+            with self.assertRaises(ValueError):
+                tool.type_text("привет")
+

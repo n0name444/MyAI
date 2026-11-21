@@ -109,10 +109,32 @@ KEY_REGEX = "(?:" + "|".join(re.escape(k) for k in KEY_NAMES) + rf"|(?:ctrl|cont
 # Окна, в которые ввод запрещён: терминалы дали бы произвольное выполнение команд.
 BLOCKED_EXES = frozenset({
     "cmd.exe", "powershell.exe", "pwsh.exe", "powershell_ise.exe", "windowsterminal.exe",
-    "wt.exe", "conhost.exe", "openconsole.exe", "regedit.exe", "mmc.exe",
+    "windowsterminalpreview.exe", "wt.exe", "conhost.exe", "openconsole.exe",
+    "mintty.exe", "wezterm.exe", "wezterm-gui.exe", "alacritty.exe", "tabby.exe",
+    "conemu.exe", "conemu64.exe", "hyper.exe", "terminus.exe", "bash.exe", "wsl.exe",
+    # SSH/telnet/RDP: ввод туда — это команды на удалённой машине
+    "putty.exe", "kitty.exe", "plink.exe", "ssh.exe", "telnet.exe", "mstsc.exe",
+    # файловые менеджеры с командной строкой
+    "totalcmd.exe", "totalcmd64.exe", "doublecmd.exe", "far.exe",
+    "regedit.exe", "mmc.exe",
 })
-SELF_WINDOW_MARK = "myai"   # в заголовке вкладки/окна MyAI
+# IDE: встроенный терминал не отличить от редактора по имени процесса — по умолчанию не вводим.
+IDE_EXES = frozenset({
+    "code.exe", "code - insiders.exe", "vscodium.exe", "cursor.exe", "windsurf.exe",
+    "idea64.exe", "pycharm64.exe", "webstorm64.exe", "goland64.exe", "clion64.exe",
+    "rider64.exe", "datagrip64.exe", "phpstorm64.exe", "rubymine64.exe", "studio64.exe",
+})
+_ALLOW_IDE_INPUT = os.getenv("MYAI_TYPE_IDE", "0").lower() not in {"0", "false", "no"}
+BROWSER_EXES = frozenset({"chrome.exe", "msedge.exe", "firefox.exe", "opera.exe",
+                          "vivaldi.exe", "brave.exe", "browser.exe", "iexplore.exe"})
+SELF_WINDOW_MARK = "myai"   # в заголовке вкладки MyAI
 
+def _input_blocked(exe: str) -> bool:
+    return exe in BLOCKED_EXES or (exe in IDE_EXES and not _ALLOW_IDE_INPUT)
+
+def _is_self_window(title: str, exe: str) -> bool:
+    # Окно MyAI — вкладка браузера. Папка «MyAI» в Проводнике — не мы.
+    return SELF_WINDOW_MARK in (title or "").lower() and (not exe or exe in BROWSER_EXES)
 
 # ======================= Windows API (ctypes) =======================
 def _make_input_types():
@@ -143,6 +165,28 @@ def _make_input_types():
 def _utf16_units(text: str):
     raw = text.encode("utf-16-le")
     return struct.unpack(f"<{len(raw) // 2}H", raw)
+
+def _send_unicode(text: str, guard=None) -> None:
+    """Вводит любой Unicode-текст (в том числе кириллицу) через SendInput."""
+    INPUT, KEYBDINPUT = _make_input_types()
+    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, INPUT_KEYBOARD = 0x0002, 0x0004, 1
+    user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+    units = _utf16_units(text)
+    for start in range(0, len(units), 40):
+        if guard is not None:
+            guard()          # фокус мог уйти с момента предыдущего блока
+        chunk = units[start:start + 40]
+        events = []
+        for unit in chunk:
+            for flags in (KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP):
+                inp = INPUT(type=INPUT_KEYBOARD)
+                inp.ki = KEYBDINPUT(wVk=0, wScan=unit, dwFlags=flags, time=0, dwExtraInfo=0)
+                events.append(inp)
+        array = (INPUT * len(events))(*events)
+        sent = user32.SendInput(len(events), array, ctypes.sizeof(INPUT))
+        if sent != len(events):
+            raise OSError("Windows не принял ввод (окно может быть запущено от имени администратора)")
+        time.sleep(0.01)
 
 
 def _send_unicode(text: str) -> None:
@@ -293,22 +337,37 @@ class ComputerControl:
                 f"Можно сказать «закрой принудительно {spec.names[0]}» (несохранённое пропадёт).")
 
     # ---------- клавиатура ----------
-    def _focus_target(self) -> None:
-        """Команда приходит из окна MyAI, поэтому сначала переключаемся на предыдущее окно."""
+    def _focus_target(self) -> Tuple[int, str]:
+        """Переключается на предыдущее окно; возвращает (hwnd, заголовок) проверенной цели."""
         if pyautogui is None:
             raise RuntimeError("Для ввода с клавиатуры установите pyautogui")
         if not IS_WINDOWS:
-            return
+            raise ValueError("Ввод с клавиатуры поддерживается только в Windows")
         before = _foreground()
         current = before
-        if SELF_WINDOW_MARK in before[1].lower():
+        if _is_self_window(before[1], before[2]):
             pyautogui.hotkey("alt", "tab")
             time.sleep(0.45)
             current = _foreground()
-            if current[0] == before[0] or SELF_WINDOW_MARK in current[1].lower():
+            if current[0] == before[0] or _is_self_window(current[1], current[2]):
                 raise ValueError("Не нашёл другое окно для ввода. Сначала откройте нужное приложение (например, «открой блокнот»).")
-        if current[2] in BLOCKED_EXES:
+        self._assert_target(current)
+        return current[0], current[1]
+
+    @staticmethod
+    def _assert_target(win: Tuple[int, str, str]) -> None:
+        exe = win[2]
+        if exe in BLOCKED_EXES:
             raise ValueError("В терминалы, PowerShell и системные консоли я ничего не ввожу.")
+        if exe in IDE_EXES and not _ALLOW_IDE_INPUT:
+            raise ValueError("В окна IDE я по умолчанию не ввожу: там есть встроенный терминал. Разрешить: MYAI_TYPE_IDE=1.")
+
+    def _recheck(self, hwnd: int) -> None:
+        """Повторная проверка прямо перед отправкой: фокус мог уйти за время команды."""
+        now = _foreground()
+        if now[0] != hwnd:
+            raise ValueError("Фокус ушёл из целевого окна — ввод остановлен (часть текста могла быть введена). Повторите команду.")
+        self._assert_target(now)
 
     def type_text(self, text: str) -> str:
         text = re.sub(r"[\r\n\t]+", " ", text or "").strip()
@@ -316,12 +375,9 @@ class ComputerControl:
             raise ValueError("Что именно написать?")
         if len(text) > MAX_TYPE_CHARS:
             raise ValueError(f"Слишком длинный текст (максимум {MAX_TYPE_CHARS} символов)")
-        self._focus_target()
-        if IS_WINDOWS:
-            _send_unicode(text)
-        else:
-            pyautogui.write(text, interval=0.01)  # на других ОС — только ASCII
-        return f"Ввёл текст ({len(text)} симв.)."
+        hwnd, title = self._focus_target()
+        _send_unicode(text, guard=lambda: self._recheck(hwnd))
+        return f"Ввёл текст ({len(text)} симв.) в окно «{title[:60]}»."
 
     @staticmethod
     def parse_key(raw: str) -> Tuple[str, ...]:
@@ -335,12 +391,13 @@ class ComputerControl:
 
     def press_key(self, raw: str) -> str:
         keys = self.parse_key(raw)
-        self._focus_target()
+        hwnd, title = self._focus_target()
+        self._recheck(hwnd)
         if len(keys) == 1:
             pyautogui.press(keys[0])
         else:
             pyautogui.hotkey(*keys)
-        return f"Нажал {'+'.join(keys)}."
+        return f"Нажал {'+'.join(keys)} в окно «{title[:60]}»."
 
     # ---------- разбор команды ----------
     def execute(self, command: str) -> str:

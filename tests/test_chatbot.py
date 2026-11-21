@@ -9,6 +9,26 @@ import chat_model
 from chat_model import ChatBot
 from memory import Memory
 from tools.calculator_history import CalculatorHistory
+from tools.calculator_formulas import CalculatorFormulas
+from tools.calculator_scenarios import CalculatorScenarios
+
+
+class TestNewChatContext(unittest.TestCase):
+    def test_new_chat_does_not_resurrect_previous_conversation(self):
+        class EchoModel:
+            def generate_response(self, prompt, max_new_tokens=600):
+                return "ок"
+        with tempfile.TemporaryDirectory() as tmp:
+            p = lambda name: os.path.join(tmp, name)
+            bot = ChatBot(model=EchoModel(), history_file=p("h.json"),
+                          memory=Memory(p("m.sqlite3")),
+                          calculator_history=CalculatorHistory(p("ch.sqlite3")),
+                          calculator_formulas=CalculatorFormulas(p("cf.sqlite3")),
+                          calculator_scenarios=CalculatorScenarios(p("cs.sqlite3")))
+            bot.reply("мой любимый цвет синий")
+            bot.new_chat()
+            msgs = bot._chat_messages("какой мой любимый цвет?")
+            self.assertTrue(all("синий" not in m["content"] for m in msgs))
 
 
 class FakeModel:
@@ -219,3 +239,35 @@ class FitTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestNameRecognition(unittest.TestCase):
+    def setUp(self):
+        class EchoModel:
+            def generate_response(self, prompt, max_new_tokens=600):
+                return "ок"
+        self._tmp = tempfile.TemporaryDirectory()
+        p = lambda name: os.path.join(self._tmp.name, name)
+        self.bot = ChatBot(model=EchoModel(), history_file=p("h.json"),
+                           memory=Memory(p("m.sqlite3")),
+                           calculator_history=CalculatorHistory(p("ch.sqlite3")),
+                           calculator_formulas=CalculatorFormulas(p("cf.sqlite3")),
+                           calculator_scenarios=CalculatorScenarios(p("cs.sqlite3")))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_name_at_start(self):
+        self.assertTrue(self.bot._remember_name("меня зовут Иван"))
+        self.assertEqual(self.bot.user_name, "Иван")
+
+    def test_name_with_greeting(self):
+        self.assertTrue(self.bot._remember_name("Привет, меня зовут Анна!"))
+        self.assertEqual(self.bot.user_name, "Анна")
+
+    def test_hyphenated_name(self):
+        self.assertTrue(self.bot._remember_name("мое имя это Анна-Мария"))
+        self.assertEqual(self.bot.user_name, "Анна-Мария")
+
+    def test_quoted_phrase_not_hijacked(self):
+        self.assertFalse(self.bot._remember_name('переведи фразу "меня зовут Джон" на английский'))
+        self.assertIsNone(self.bot.user_name)

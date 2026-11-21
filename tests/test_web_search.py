@@ -1,7 +1,7 @@
 import base64
 import unittest
 from unittest import mock
-
+from types import SimpleNamespace
 from tools.web_search import WebSearch
 
 RSS = """<?xml version="1.0" encoding="utf-8"?><rss><channel>
@@ -54,3 +54,38 @@ class WebSearchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestPeerCheck(unittest.TestCase):
+    @staticmethod
+    def _resp(ip):
+        sock = SimpleNamespace(getpeername=lambda: (ip, 443))
+        return SimpleNamespace(raw=SimpleNamespace(_connection=SimpleNamespace(sock=sock)))
+
+    def test_public_peer_allowed(self):
+        self.assertTrue(WebSearch._peer_is_public(self._resp("93.184.216.34")))
+
+    def test_private_peers_blocked(self):
+        for ip in ("127.0.0.1", "192.168.1.1", "10.0.0.5", "172.16.0.1", "::1", "169.254.169.254"):
+            self.assertFalse(WebSearch._peer_is_public(self._resp(ip)), ip)
+
+    def test_missing_socket_fails_closed(self):
+        resp = SimpleNamespace(raw=SimpleNamespace(_connection=SimpleNamespace(sock=None)))
+        self.assertFalse(WebSearch._peer_is_public(resp))
+
+    def test_fetch_text_rejects_rebound_connection_without_reading_body(self):
+        read = []
+        class FakeResp:
+            status_code = 200
+            headers = {"Content-Type": "text/html"}
+            def __init__(self):
+                sock = SimpleNamespace(getpeername=lambda: ("127.0.0.1", 443))
+                self.raw = SimpleNamespace(_connection=SimpleNamespace(sock=sock))
+            def iter_content(self, n):
+                read.append(True)
+                yield b"SECRET"
+            def close(self):
+                pass
+        with mock.patch.object(WebSearch, "is_public_url", return_value=True), \
+             mock.patch("tools.web_search.requests.get", return_value=FakeResp()):
+            self.assertEqual(WebSearch().fetch_text("http://rebind.test/history"), "")
+        self.assertEqual(read, [])

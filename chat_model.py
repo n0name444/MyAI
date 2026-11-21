@@ -26,7 +26,7 @@ from tools.calculator_history import CalculatorHistory
 from tools.calculator_formulas import CalculatorFormulas
 from tools.calculator_scenarios import CalculatorScenarios
 from route_journal import RouteJournal, classify_outcome
-from textutil import neutralize_untrusted
+from textutil import neutralize_untrusted, strip_polite
 from version import __version__
 
 log = logging.getLogger(__name__)
@@ -80,9 +80,12 @@ WebSearchTool = _optional_tool("tools.web_search", "WebSearchTool")
 WeatherTool = _optional_tool("tools.weather", "WeatherTool")
 ComputerControl = _optional_tool("tools.computer_control", "ComputerControl")
 
-_NAME_STRICT = re.compile(r"(?i:меня зовут|мо[её] имя(?:\s+это)?)\s+([А-ЯЁA-Z][а-яёa-z-]{1,30})")
-_NAME_LOWER = re.compile(r"(?i:меня зовут|мо[её] имя(?:\s+это)?)\s+([а-яёa-z-]{2,30})\s*[.!?]*$")
-
+# Имя запоминаем только в начале фразы (после приветствия/вежливых слов),
+# иначе «переведи фразу "меня зовут Джон"» перехватывался целиком.
+_NAME_PREFIX = (r"^(?:(?i:привет|здравствуй(?:те)?|добрый\s+(?:день|вечер|утро)|хай|ку|hello|hi)[,!.]?\s+)?"
+                r"(?i:меня зовут|мо[её] имя(?:\s+это)?)\s+")
+_NAME_STRICT = re.compile(_NAME_PREFIX + r"([А-ЯЁA-Z][а-яёa-zА-ЯЁA-Z-]{1,30})")
+_NAME_LOWER = re.compile(_NAME_PREFIX + r"([а-яёa-z-]{2,30})\s*[.!?]*$")
 
 class ChatBot:
     """Основной движок MyAI."""
@@ -505,15 +508,16 @@ class ChatBot:
 
     # ====================== имя и память ======================
     def _remember_name(self, text: str) -> bool:
-        m = _NAME_STRICT.search(text)
+        t = strip_polite(text)
+        m = _NAME_STRICT.match(t)
         name = m.group(1) if m else None
         if not name:
-            m = _NAME_LOWER.search(text.strip())
+            m = _NAME_LOWER.match(t)
             name = m.group(1).capitalize() if m else None
         if not name:
             return False
         with self._lock:
-            self.user_name = name.strip(".,!?;:")
+            self.user_name = name.strip("-.,!?;:")
         return True
 
     @staticmethod
@@ -567,16 +571,11 @@ class ChatBot:
             system += (" Заметки, которые пользователь просил запомнить (он пишет о себе от первого лица): "
                        + " | ".join(n[:300] for n in notes) + ".")
         messages = [{"role": "system", "content": system}]
+        # «Новый чат» начинает с чистого листа: журнал реплик не воскрешаем.
         context = self.get_history()[-10:]
-        if not context:
-            try:
-                context = self.memory.recent_turns(8)
-            except Exception:
-                context = []
         messages.extend(context)
         messages.append({"role": "user", "content": user_text})
         return messages
-
     # ====================== веб-поиск ======================
     @staticmethod
     def _clean_query(text: str) -> str:

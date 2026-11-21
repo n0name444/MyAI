@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from decimal import Decimal
 
 from tools.calculator_formulas import CalculatorFormulas, evaluate_formula, TEMPLATES
 
@@ -53,3 +54,13 @@ class FormulaStorageTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+class TestFormulaExtremeValues(unittest.TestCase):
+    def test_extreme_fractional_values(self):
+        # Очень малое и очень большое нецелое: до патча подстановка давала «1.5e-20»
+        # с буквой «e», и SafeCalculator отказывал («Недопустимые символы»).
+        self.assertEqual(evaluate_formula("x*2", {"x": "1.5e-20"}), Decimal("3.0E-20"))
+        self.assertGreater(evaluate_formula("x+1", {"x": "12345678901234567890.5"}), Decimal("1e19"))
+
+    def test_regular_cases_unchanged(self):
+        # Обычный кейс (скидка) патч не сломал.
+        self.assertEqual(evaluate_formula("price*(100-discount)/100", {"price": "1000", "discount": "15"}), 850)

@@ -82,9 +82,8 @@ if errorlevel 1 (
 )
 
 rem ----- start server -----
-if exist myai.log del myai.log >nul 2>nul
 echo Starting MyAI on port %PORT% ...
-start "MyAI Server" /min cmd /c ""%VENV%" app.py >myai.log 2>&1"
+start "MyAI Server" /min cmd /c ""%VENV%" app.py >myai_console.log 2>&1"
 
 where curl >nul 2>nul
 if errorlevel 1 (
@@ -101,8 +100,9 @@ timeout /t 1 /nobreak >nul
 goto wait_loop
 
 :start_timeout
-echo ERROR: the server did not respond. Last lines of myai.log:
+echo ERROR: the server did not respond. Last lines of the logs:
 if exist myai.log type myai.log
+if exist myai_console.log type myai_console.log
 goto fail
 
 :open_browser

@@ -79,7 +79,7 @@ function setBubble(row,text){
 }
 function setMeta(row,d){
   row.querySelector('.meta').innerHTML=(d.route?`<span class="badge">${esc(d.route)}</span>`:'')+(d.model?`<span class="badge">${esc(d.model)}</span>`:'');
-  row.querySelector('.sources').innerHTML=(d.sources||[]).map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title||x.url)}</a>`).join('');
+  row.querySelector('.sources').innerHTML=(d.sources||[]).filter(x=>/^https?:\/\//i.test(x.url||'')).map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.title||x.url)}</a>`).join('');
 }
 // «Копировать» работает с исходным текстом ответа, «Повторить вопрос» отправляет тот же вопрос ещё раз.
 function setActions(row,raw,retryText){

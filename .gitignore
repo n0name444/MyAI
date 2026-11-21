@@ -4,7 +4,8 @@ __pycache__/
 chat_history.json
 memory.sqlite3
 model_offload/
-myai.log
+myai.log*
+myai_console.log
 *.bak
 logs/
 

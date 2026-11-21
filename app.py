@@ -300,7 +300,7 @@ def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool =
     def calculator_formula_delete():
         data = request.get_json(silent=True) or {}
         try:
-            formula_id = int(data.get("id"))
+            formula_id = _strict_id(data.get("id"))
             if formula_id <= 0:
                 raise ValueError
         except (TypeError, ValueError):
@@ -338,7 +338,7 @@ def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool =
     def calculator_scenario_update():
         data = request.get_json(silent=True) or {}
         try:
-            scenario_id = int(data.get("id"))
+            scenario_id = _strict_id(data.get("id"))
             if scenario_id <= 0: raise ValueError
             version = bot.calculator_scenarios.update(scenario_id, data.get("name", ""), data.get("description", ""),
                 data.get("inputs", {}), data.get("steps", []), data.get("category", "Пользовательские"))
@@ -355,7 +355,7 @@ def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool =
     def calculator_scenario_copy():
         data = request.get_json(silent=True) or {}
         try:
-            scenario_id = int(data.get("id"))
+            scenario_id = _strict_id(data.get("id"))
             if scenario_id <= 0: raise ValueError
             new_id = bot.calculator_scenarios.duplicate(scenario_id, data.get("name"))
             return jsonify({"status": "ok", "id": new_id})
@@ -381,7 +381,7 @@ def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool =
     def calculator_scenario_restore():
         data = request.get_json(silent=True) or {}
         try:
-            scenario_id = int(data.get("id")); version = int(data.get("version"))
+            scenario_id = _strict_id(data.get("id")); version = _strict_id(data.get("version"))
             if scenario_id <= 0 or version <= 0: raise ValueError
             new_version = bot.calculator_scenarios.restore_version(scenario_id, version)
             return jsonify({"status": "ok", "version": new_version})
@@ -424,7 +424,7 @@ def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool =
     def calculator_scenario_run():
         data = request.get_json(silent=True) or {}
         try:
-            scenario, results = bot.calculator_scenarios.run(int(data.get("id")), data.get("values", {}))
+            scenario, results = bot.calculator_scenarios.run(_strict_id(data.get("id")), data.get("values", {}))
             lines = [f"{item['name']}: {item['result']}" for item in results]
             answer = "\n".join(lines)
             expression = "Сценарий: " + scenario["name"] + " | " + json.dumps(data.get("values", {}), ensure_ascii=False)
@@ -444,7 +444,7 @@ def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool =
     def calculator_scenario_delete():
         data = request.get_json(silent=True) or {}
         try:
-            scenario_id = int(data.get("id"))
+            scenario_id = _strict_id(data.get("id"))
             if scenario_id <= 0: raise ValueError
         except (TypeError, ValueError):
             return jsonify({"error": "Некорректный номер сценария."}), 400
@@ -515,7 +515,7 @@ def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool =
     def calculator_replay():
         data = request.get_json(silent=True) or {}
         try:
-            calculation_id = int(data.get("id"))
+            calculation_id = _strict_id(data.get("id"))
             if calculation_id <= 0:
                 raise ValueError
         except (TypeError, ValueError):

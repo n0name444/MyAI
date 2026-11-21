@@ -82,7 +82,10 @@ CALC_ADVANCED_RE = re.compile(
 CALC_PURE_RE = re.compile(r"[\d()+\-*/%.,×÷^]+[?!.]?")
 # «12 умножить на 3», «100 разделить на 4» — без глагола «посчитай»
 CALC_WORDS_RE = re.compile(
-    r"^[\d(][\d\s.,()]*(?:\s+(?:плюс|минус|умножить на|разделить на|делить на|поделить на|в степени)\s+[\d(][\d\s.,()]*)+[?!.]?$")
+    r"^[\d(][\d\s.,()]*(?:\s+(?:плюс|минус|умножить на|разделить на|делить на|поделить на|в степени)\s+[\d(][\d\s.,()]*)+[?!.]?$")# «увеличь громкость/яркость на N» — настройка устройства, а не арифметика.
+CALC_NOT_ARITHMETIC_RE = re.compile(
+    r"\b(?:увелич\w*|уменьш\w*|прибавь|убавь|добавь|снизь|повысь|подним\w*|опуст\w*)\s+"
+    r"(?:громкост\w*|звук\b|яркост\w*|шрифт\w*|масштаб\w*|скорост\w*|мощност\w*|давлени\w*|нагрузк\w*|температур\w*)")
 
 WEATHER_RE = [
     re.compile(r"\bпогод(?:а|е|у|ы|ой)\b"),
@@ -96,7 +99,12 @@ WEATHER_RE = [
 # Разговор о погоде вообще («что такое погода», «почему меняется погода») — это не запрос прогноза.
 WEATHER_GENERAL_RE = re.compile(
     r"что такое погод|как (?:формируется|образуется|возникает|меняется)\s+погод|погод\w*\s+как\s+(?:явление|понятие)"
-    r"|почему\s+(?:\w+\s+)?погод")
+    r"|почему\s+(?:\w+\s+)?погод")# Бытовая/техническая температура — не прогноз погоды («температура в духовке»).
+WEATHER_NOT_FORECAST_RE = re.compile(
+    r"температур\w*\s+(?:в\s+)?(?:духовк\w*|холодильник\w*|морозилк\w*|чайник\w*|кастрюл\w*|сковород\w*"
+    r"|комнат\w*|помещени\w*|квартир\w*|саун\w*|теплиц\w*|аквариум\w*|бассейн\w*|инкубатор\w*"
+    r"|плав\w*|кипени\w*|замерзани\w*|вспышк\w*|горени\w*|тела|масла|молока|мяса|рыбы|теста|пирога|хлеба)"
+    r"|температур\w*\s+воздуха\s+в\s+(?:помещени\w*|комнат\w*|квартир\w*|доме|офисе|теплиц\w*|подвал\w*|гараж\w*)")
 
 
 ANIME_RE = [
@@ -175,14 +183,14 @@ class Router:
         if CALC_USE_LAST_RE.search(t):
             return RouteDecision(Route.CALC_USE_LAST.value, "использование предыдущего результата")
         compact = re.sub(r"\s+", "", t)
-        if CALC_ADVANCED_RE.search(t):
+        if CALC_ADVANCED_RE.search(t) and not CALC_NOT_ARITHMETIC_RE.search(t):
             return RouteDecision(Route.CALCULATOR.value, "статистика или конвертация единиц")
         if CALC_VERB_RE.search(t) or CALC_WORDS_RE.fullmatch(t):
             return RouteDecision(Route.CALCULATOR.value, "команда расчёта")
         if CALC_PURE_RE.fullmatch(compact) and re.search(r"\d", compact) and re.search(r"[+\-*/%×÷^]", compact):
             return RouteDecision(Route.CALCULATOR.value, "математическое выражение")
 
-        if not WEATHER_GENERAL_RE.search(t):
+        if not WEATHER_GENERAL_RE.search(t) and not WEATHER_NOT_FORECAST_RE.search(t):
             for rx in WEATHER_RE:
                 if rx.search(t):
                     return RouteDecision(Route.WEATHER.value, rx.pattern)
