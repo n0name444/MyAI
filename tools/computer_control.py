@@ -125,6 +125,9 @@ IDE_EXES = frozenset({
     "rider64.exe", "datagrip64.exe", "phpstorm64.exe", "rubymine64.exe", "studio64.exe",
 })
 _ALLOW_IDE_INPUT = os.getenv("MYAI_TYPE_IDE", "0").lower() not in {"0", "false", "no"}
+# Проводник: Delete отправит выделенные файлы в корзину, Ctrl+X «вырежет» их под перенос — не нажимаем.
+FILE_MANAGER_EXES = frozenset({"explorer.exe"})
+FILE_MANAGER_BLOCKED_KEYS = frozenset({("delete",), ("ctrl", "x")})
 BROWSER_EXES = frozenset({"chrome.exe", "msedge.exe", "firefox.exe", "opera.exe",
                           "vivaldi.exe", "brave.exe", "browser.exe", "iexplore.exe"})
 SELF_WINDOW_MARK = "myai"   # в заголовке вкладки MyAI
@@ -336,19 +339,21 @@ class ComputerControl:
         return current[0], current[1]
 
     @staticmethod
-    def _assert_target(win: Tuple[int, str, str]) -> None:
+    def _assert_target(win: Tuple[int, str, str], keys: Optional[Tuple[str, ...]] = None) -> None:
         exe = win[2]
         if exe in BLOCKED_EXES:
             raise ValueError("В терминалы, PowerShell и системные консоли я ничего не ввожу.")
         if exe in IDE_EXES and not _ALLOW_IDE_INPUT:
             raise ValueError("В окна IDE я по умолчанию не ввожу: там есть встроенный терминал. Разрешить: MYAI_TYPE_IDE=1.")
+        if keys and exe in FILE_MANAGER_EXES and tuple(keys) in FILE_MANAGER_BLOCKED_KEYS:
+            raise ValueError("В Проводнике я не нажимаю Delete и Ctrl+X: они удаляют или переносят файлы. Сделайте это сами.")
 
-    def _recheck(self, hwnd: int) -> None:
+    def _recheck(self, hwnd: int, keys: Optional[Tuple[str, ...]] = None) -> None:
         """Повторная проверка прямо перед отправкой: фокус мог уйти за время команды."""
         now = _foreground()
         if now[0] != hwnd:
             raise ValueError("Фокус ушёл из целевого окна — ввод остановлен (часть текста могла быть введена). Повторите команду.")
-        self._assert_target(now)
+        self._assert_target(now, keys)
 
     def type_text(self, text: str) -> str:
         text = re.sub(r"[\r\n\t]+", " ", text or "").strip()
@@ -373,7 +378,7 @@ class ComputerControl:
     def press_key(self, raw: str) -> str:
         keys = self.parse_key(raw)
         hwnd, title = self._focus_target()
-        self._recheck(hwnd)
+        self._recheck(hwnd, keys)
         if len(keys) == 1:
             pyautogui.press(keys[0])
         else:

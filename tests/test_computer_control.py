@@ -85,6 +85,32 @@ class ExecuteTests(unittest.TestCase):
         self.assertEqual(ComputerControl.parse_key("Ctrl+C"), ("ctrl", "c"))
         with self.assertRaises(ValueError):
             ComputerControl.parse_key("alt+f4")
+    def test_explorer_blocks_delete_and_cut(self):
+        explorer = (5, "Загрузки", "explorer.exe")
+        for phrase in ("delete", "делит", "Ctrl+X", "control x"):
+            fake = mock.Mock()
+            with self.subTest(phrase=phrase), mock.patch.object(cc, "pyautogui", fake), \
+                 mock.patch.object(cc, "_foreground", return_value=explorer):
+                with self.assertRaises(ValueError):
+                    self.cc.press_key(phrase)
+                fake.press.assert_not_called()
+                fake.hotkey.assert_not_called()
+
+    def test_explorer_allows_safe_keys_and_notepad_allows_delete(self):
+        fake = mock.Mock()
+        with mock.patch.object(cc, "pyautogui", fake), \
+             mock.patch.object(cc, "_foreground", return_value=(5, "Загрузки", "explorer.exe")):
+            self.cc.press_key("enter")
+            self.cc.press_key("ctrl+c")
+        fake.press.assert_called_once_with("enter")
+        fake.hotkey.assert_called_once_with("ctrl", "c")
+        fake = mock.Mock()
+        with mock.patch.object(cc, "pyautogui", fake), \
+             mock.patch.object(cc, "_foreground", return_value=(6, "Безымянный — Блокнот", "notepad.exe")):
+            self.cc.press_key("delete")
+        fake.press.assert_called_once_with("delete")
+
+
 
     def test_focus_refuses_terminal_and_self(self):
         fake = mock.Mock()
