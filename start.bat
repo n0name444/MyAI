@@ -89,6 +89,8 @@ if errorlevel 1 (
 
 rem ----- start server -----
 echo Starting MyAI on port %PORT% ...
+rem The server opens the browser itself with a per-run access key (the key is never written to disk).
+set "MYAI_OPEN_BROWSER=1"
 start "MyAI Server" /min cmd /c ""%VENV%" app.py >myai_console.log 2>&1"
 
 where curl >nul 2>nul
@@ -112,9 +114,9 @@ if exist myai_console.log type myai_console.log
 goto fail
 
 :open_browser
-start "" "http://127.0.0.1:%PORT%"
 echo.
-echo MyAI is running: http://127.0.0.1:%PORT%
+echo MyAI is running on port %PORT%. The browser opens by itself with an access key.
+echo If you closed the tab: close the "MyAI Server" window and run start.bat again.
 echo The first start downloads the model (several GB) in the background - watch the status in the sidebar.
 echo To stop MyAI, close the "MyAI Server" window in the taskbar.
 timeout /t 5 >nul

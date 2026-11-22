@@ -13,6 +13,7 @@ from memory import Memory
 from tests.test_chatbot import FakeModel
 
 PORT = 5000
+KEY = "test-access-key-0123456789abcdef"
 
 
 class AppTests(unittest.TestCase):
@@ -25,9 +26,10 @@ class AppTests(unittest.TestCase):
                       calculator_scenarios=CalculatorScenarios(os.path.join(self.tmp.name, "scenarios.db")),
                       tools={"anime": None, "web": None, "weather": None, "computer": None})
         self.bot = bot
-        self.app = create_app(bot, port=PORT, preload=False,
+        self.app = create_app(bot, port=PORT, preload=False, access_key=KEY,
                               sharing=CalculatorSharing(os.path.join(self.tmp.name, "sharing.db")))
         self.c = self.app.test_client()
+        self.c.get(f"/?k={KEY}", headers={"Host": f"127.0.0.1:{PORT}"})   # вход по ключу запуска: cookie остаётся в клиенте
         self.h = {"Host": f"127.0.0.1:{PORT}", "X-MyAI-Token": self.app.config["TOKEN"]}
 
     def post(self, path, body=None, headers=None):

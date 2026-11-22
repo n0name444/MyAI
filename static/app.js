@@ -3,6 +3,9 @@ const $=s=>document.querySelector(s);
 const chat=$('#chat'),form=$('#form'),input=$('#input'),send=$('#send'),routeTop=$('#routeTop'),jump=$('#jumpBtn');
 const TOKEN=document.querySelector('meta[name=myai-token]').content;
 const HEADERS={'Content-Type':'application/json','X-MyAI-Token':TOKEN};
+/* Ключ запуска: после перезапуска сервера cookie-сессия недействительна (401). Перезагрузка покажет страницу с подсказкой. */
+const nativeFetch=window.fetch.bind(window);
+window.fetch=async(...args)=>{const r=await nativeFetch(...args);if(r.status===401){location.reload();return new Promise(()=>{})}return r};
 const HINT_DEFAULT='Enter — отправить · Shift+Enter — новая строка · Esc — остановить ответ';
 let busy=false,controller=null,stickBottom=true;
 

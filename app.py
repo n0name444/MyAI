@@ -8,10 +8,13 @@ import json
 import logging
 import os
 import secrets
+import threading
+import webbrowser
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, make_response, redirect, render_template, request
+from werkzeug.serving import make_server
 
 from chat_model import ChatBot
 from route_journal import RouteJournal
@@ -44,6 +47,38 @@ def _setup_logging() -> None:
 
 MAX_NOTE_CHARS = 500
 
+# Ключ запуска: каждый запуск сервера создаёт случайный ключ; страница и API открываются только браузеру,
+# который пришёл по адресу с этим ключом (он получает cookie-сессию). Без этого токен из HTML мог бы взять любой
+# процесс на этом компьютере, в том числе под другой учётной записью Windows.
+SESSION_COOKIE = "myai_session"
+SESSION_MAX_AGE = 30 * 24 * 3600        # переживает закрытие браузера, но не перезапуск сервера
+MAX_SESSIONS = 32
+MIN_KEY_LEN = 16
+
+DENIED_HTML = """<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyAI — нужен ключ запуска</title>
+<style>body{font:16px/1.55 system-ui,sans-serif;max-width:34rem;margin:12vh auto;padding:0 1rem;color:#222}
+code{background:#eee;padding:.1em .35em;border-radius:4px}@media(prefers-color-scheme:dark){body{background:#161a1d;color:#e6e6e6}code{background:#2a3036}}</style>
+</head><body><h1>Нужен ключ запуска</h1>
+<p>MyAI открывается только по адресу с ключом, который создаётся при каждом запуске.</p>
+<ul>
+<li>Запустите <b>start.bat</b>: он откроет MyAI сам.</li>
+<li>Если MyAI уже работает, закройте окно «MyAI Server» и запустите <b>start.bat</b> ещё раз.</li>
+<li>Запуск вручную (<code>python app.py</code>): адрес с ключом напечатан в консоли.</li>
+</ul></body></html>
+"""
+
+
+def _same(a, b) -> bool:
+    """Сравнение секретов за постоянное время. Не падает на не-ASCII (compare_digest для str их не принимает)."""
+    return hmac.compare_digest(str(a).encode("utf-8"), str(b).encode("utf-8"))
+
+
+def _resolve_access_key(explicit) -> str:
+    key = str(explicit or "").strip()
+    return key if len(key) >= MIN_KEY_LEN else secrets.token_urlsafe(24)
+
 
 def _strict_id(value) -> int:
     """Целый id из числа или строки из цифр; bool, дроби и мусор отклоняются."""
@@ -65,7 +100,7 @@ def _asset_version() -> str:
 
 
 def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool = True,
-               sharing: CalculatorSharing | None = None) -> Flask:
+               sharing: CalculatorSharing | None = None, access_key: str | None = None) -> Flask:
     app = Flask(__name__)
     # Порядок параметров сценария задаёт автор; по умолчанию Flask сортирует ключи JSON по алфавиту.
     app.json.sort_keys = False
@@ -77,17 +112,41 @@ def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool =
     token = secrets.token_urlsafe(24)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     allowed_origins = {f"http://{h}" for h in allowed_hosts}
+    access_key = _resolve_access_key(access_key)
+    cookie_name = f"{SESSION_COOKIE}_{port}"      # cookie не различают порты, поэтому порт в имени
+    sessions: list[str] = []
+    sessions_lock = threading.Lock()
+
+    def _session_ok() -> bool:
+        sid = request.cookies.get(cookie_name, "")
+        if not sid:
+            return False
+        with sessions_lock:
+            return any(_same(sid, s) for s in sessions)
+
+    def _new_session() -> str:
+        sid = secrets.token_urlsafe(24)
+        with sessions_lock:
+            sessions.append(sid)
+            del sessions[:-MAX_SESSIONS]
+        return sid
 
     @app.before_request
     def guard():
         # Защита от DNS-rebinding: принимаем только запросы, адресованные localhost.
         if request.host.lower() not in allowed_hosts:
             return jsonify({"error": "forbidden host"}), 403
+        if request.path == "/health":
+            return None                       # start.bat ждёт ответа без ключа; ничего секретного тут нет
+        if request.path == "/" and request.method in ("GET", "HEAD"):
+            return None                       # home() сама проверяет ключ в адресе и cookie
+        if not _session_ok():
+            return jsonify({"error": "unauthorized"}), 401
         if request.method == "POST":
             origin = request.headers.get("Origin")
             if origin and origin not in allowed_origins:
                 return jsonify({"error": "forbidden origin"}), 403
-            if not hmac.compare_digest(request.headers.get("X-MyAI-Token", ""), token):
+            if not _same(request.headers.get("X-MyAI-Token", ""), token):
                 return jsonify({"error": "bad token"}), 403
         return None
 
@@ -95,9 +154,30 @@ def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool =
         data = request.get_json(silent=True) or {}
         return str(data.get("text", "") or "").strip()
 
+    def _denied():
+        resp = Response(DENIED_HTML, status=403, mimetype="text/html")
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
     @app.get("/")
     def home():
-        return render_template("index.html", token=token, version=__version__, asset_v=_asset_version())
+        key = request.args.get("k")
+        if key is not None and _same(key, access_key):
+            # Верный ключ: выдаём cookie-сессию и убираем ключ из адреса (редирект), чтобы он не оседал в истории.
+            resp = redirect("/", code=302)
+            resp.set_cookie(cookie_name, _new_session(), max_age=SESSION_MAX_AGE, httponly=True,
+                            samesite="Lax", path="/")
+            resp.headers["Cache-Control"] = "no-store"
+            return resp
+        if not _session_ok():
+            if key is not None:
+                log.warning("Отклонена попытка входа: неверный ключ запуска")
+            return _denied()
+        if key is not None:
+            return redirect("/", code=302)     # устаревший ключ при действующей сессии: просто чистим адрес
+        resp = make_response(render_template("index.html", token=token, version=__version__, asset_v=_asset_version()))
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
 
     @app.post("/chat")
     def chat():
@@ -555,13 +635,38 @@ def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool =
 
     app.config["BOT"] = bot
     app.config["TOKEN"] = token
+    app.config["ACCESS_KEY"] = access_key
     if preload and os.getenv("MYAI_PRELOAD", "1").lower() not in {"0", "false", "no"}:
         bot.preload_async()
     return app
 
 
-if __name__ == "__main__":
+def main() -> int:
     _setup_logging()
+    log = logging.getLogger("myai")
     application = create_app()
-    logging.getLogger("myai").info("MyAI v%s запущен: http://127.0.0.1:%s", __version__, PORT)
-    application.run(host="127.0.0.1", port=PORT, debug=False, threaded=True)
+    try:
+        server = make_server("127.0.0.1", PORT, application, threaded=True)
+    except (OSError, SystemExit):             # занятый порт werkzeug сам печатает и завершает через sys.exit(1)
+        log.error("Не удалось занять порт %s. Возможно, MyAI уже запущен: закройте окно «MyAI Server» и запустите start.bat снова.", PORT)
+        return 1
+    url = f"http://127.0.0.1:{PORT}/?k={application.config['ACCESS_KEY']}"
+    log.info("MyAI v%s запущен: http://127.0.0.1:%s (вход по ключу запуска)", __version__, PORT)
+    # Ключ не пишем в лог-файлы. start.bat просит открыть браузер самим сервером (MYAI_OPEN_BROWSER=1);
+    # при ручном запуске адрес с ключом печатается только в консоль.
+    if os.getenv("MYAI_OPEN_BROWSER", "0").lower() in {"1", "true", "yes"}:
+        if not webbrowser.open(url):
+            print("Не удалось открыть браузер. Откройте адрес вручную:", url, flush=True)
+    else:
+        print("Откройте в браузере:", url, flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
