@@ -16,12 +16,12 @@ set "VENV=%CD%\.venv\Scripts\python.exe"
 
 if exist "%VENV%" goto have_venv
 
-rem ----- find Python 3.10-3.13 -----
+rem ----- find Python 3.12-3.13 -----
 set "PYEXE="
 set "PYARGS="
 where py >nul 2>nul
 if not errorlevel 1 (
-  for %%V in (3.12 3.11 3.13 3.10) do (
+  for %%V in (3.12 3.13) do (
     if not defined PYEXE (
       py -%%V -c "import sys" >nul 2>nul && set "PYEXE=py" && set "PYARGS=-%%V"
     )
@@ -30,12 +30,12 @@ if not errorlevel 1 (
 if not defined PYEXE (
   for /f "delims=" %%P in ('where python 2^>nul') do (
     if not defined PYEXE (
-      "%%P" -c "import sys; sys.exit(0 if (3,10)<=sys.version_info[:2]<=(3,13) else 1)" >nul 2>nul && set "PYEXE=%%P"
+      "%%P" -c "import sys; sys.exit(0 if (3,12)<=sys.version_info[:2]<=(3,13) else 1)" >nul 2>nul && set "PYEXE=%%P"
     )
   )
 )
 if not defined PYEXE (
-  echo ERROR: Python 3.10-3.13 not found. Install Python 3.12 from python.org and tick Add to PATH.
+  echo ERROR: Python 3.12-3.13 not found. Install Python 3.12 or 3.13 and tick Add to PATH.
   goto fail
 )
 echo Creating virtual environment...
@@ -43,6 +43,12 @@ echo Creating virtual environment...
 if errorlevel 1 goto fail
 
 :have_venv
+"%VENV%" -c "import sys; sys.exit(0 if (3,12)<=sys.version_info[:2]<=(3,13) else 1)" >nul 2>nul
+if errorlevel 1 (
+  echo ERROR: .venv uses an unsupported Python version. Python 3.12-3.13 is required.
+  echo Delete the .venv folder and run start.bat again.
+  goto fail
+)
 "%VENV%" -m pip install --upgrade pip >nul 2>nul
 
 rem ----- PyTorch with CUDA (PyPI wheels for Windows are CPU-only) -----
