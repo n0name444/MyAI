@@ -150,3 +150,28 @@ class TestInputSafety(unittest.TestCase):
             with self.assertRaises(ValueError):
                 tool.type_text("привет")
 
+class SendUnicodeRealTests(unittest.TestCase):
+    """Настоящая _send_unicode: мокаем SendInput, а не саму функцию."""
+
+    def test_signature_has_guard(self):
+        import inspect
+        self.assertIn("guard", inspect.signature(cc._send_unicode).parameters,
+                      "старая копия _send_unicode без guard снова перекрывает новую?")
+
+    def test_guard_runs_before_each_chunk(self):
+        windll = mock.Mock()
+        windll.user32.SendInput.side_effect = lambda n, arr, size: n
+        calls = []
+        with mock.patch.object(cc.ctypes, "windll", windll, create=True):
+            cc._send_unicode("а" * 120, guard=lambda: calls.append(1))  # 120 юнитов = 3 блока по 40
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(windll.user32.SendInput.call_count, 3)
+
+    def test_guard_abort_types_nothing(self):
+        windll = mock.Mock()
+        def guard():
+            raise ValueError("фокус ушёл")
+        with mock.patch.object(cc.ctypes, "windll", windll, create=True):
+            with self.assertRaises(ValueError):
+                cc._send_unicode("привет", guard=guard)
+        windll.user32.SendInput.assert_not_called()

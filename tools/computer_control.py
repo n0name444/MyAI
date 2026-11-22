@@ -189,25 +189,6 @@ def _send_unicode(text: str, guard=None) -> None:
         time.sleep(0.01)
 
 
-def _send_unicode(text: str) -> None:
-    """Вводит любой Unicode-текст (в том числе кириллицу) через SendInput."""
-    INPUT, KEYBDINPUT = _make_input_types()
-    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, INPUT_KEYBOARD = 0x0002, 0x0004, 1
-    user32 = ctypes.windll.user32  # type: ignore[attr-defined]
-    units = _utf16_units(text)
-    for start in range(0, len(units), 40):
-        chunk = units[start:start + 40]
-        events = []
-        for unit in chunk:
-            for flags in (KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP):
-                inp = INPUT(type=INPUT_KEYBOARD)
-                inp.ki = KEYBDINPUT(wVk=0, wScan=unit, dwFlags=flags, time=0, dwExtraInfo=0)
-                events.append(inp)
-        array = (INPUT * len(events))(*events)
-        sent = user32.SendInput(len(events), array, ctypes.sizeof(INPUT))
-        if sent != len(events):
-            raise OSError("Windows не принял ввод (окно может быть запущено от имени администратора)")
-        time.sleep(0.01)
 
 
 def _foreground() -> Tuple[int, str, str]:
