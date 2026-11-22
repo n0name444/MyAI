@@ -293,6 +293,10 @@ class AppTests(unittest.TestCase):
         self.assertEqual(self.post('/calculator/scenarios/unpublish', {'publication_id': 'x'}).status_code, 400)
         self.assertEqual(self.post('/calculator/scenarios/publish', {'id': 999}).status_code, 404)
         self.assertEqual(self.post('/calculator/scenarios/publish', {}).status_code, 400)
+        for bad in ('abc', 1.5, True, None):
+            r = self.post('/calculator/scenarios/publish', {'id': bad})
+            self.assertEqual(r.status_code, 400, bad)
+            self.assertEqual(r.get_json()['error'], 'Некорректный номер сценария.')
 
     def test_scenario_inputs_keep_author_order(self):
         payload = {"name": "Порядок", "description": "", "category": "Покупки",

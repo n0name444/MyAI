@@ -60,7 +60,7 @@ class CalculatorSharing:
         except Exception: db.rollback(); raise
         finally: db.close()
     def publish(self, store: CalculatorScenarios, scenario_id):
-        scenario=store.get(int(scenario_id))
+        scenario=store.get(_strict_int(scenario_id,"Некорректный номер сценария."))
         if not scenario: raise KeyError("Сценарий не найден.")
         # Повторная валидация перед публикацией: в каталоге нет исполняемого кода.
         name,desc,inputs,steps=store.validate(scenario["name"],scenario["description"],scenario["inputs"],scenario["steps"])

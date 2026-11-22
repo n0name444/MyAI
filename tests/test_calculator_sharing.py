@@ -27,6 +27,15 @@ class CalculatorSharingTests(unittest.TestCase):
     def test_invalid_scenario_cannot_publish(self):
         self.store.delete(self.sid)
         with self.assertRaises(KeyError): self.sharing.publish(self.store,self.sid)
+    def test_publish_rejects_malformed_scenario_id(self):
+        for bad in (None,"abc","",1.5,True,[1],{"id":1}):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError) as ctx: self.sharing.publish(self.store,bad)
+                self.assertEqual(str(ctx.exception),"Некорректный номер сценария.")
+        self.assertEqual(self.sharing.list(),[])
+    def test_publish_accepts_id_as_digit_string(self):
+        self.sharing.publish(self.store,str(self.sid))
+        self.assertEqual(len(self.sharing.list()),1)
     def test_rating_bounds_and_average(self):
         pid=self.sharing.publish(self.store,self.sid)
         self.sharing.rate(pid,5); self.sharing.rate(pid,3)
