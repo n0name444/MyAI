@@ -4,6 +4,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 
 import chat_model
 from chat_model import ChatBot
@@ -271,3 +272,26 @@ class TestNameRecognition(unittest.TestCase):
     def test_quoted_phrase_not_hijacked(self):
         self.assertFalse(self.bot._remember_name('переведи фразу "меня зовут Джон" на английский'))
         self.assertIsNone(self.bot.user_name)
+
+class ReloadModelTests(Base):
+    def test_reload_refuses_while_generating(self):
+        b = self.make()
+        with b._gen_lock:                      # имитируем идущую генерацию
+            self.assertFalse(b.reload_model())
+        self.assertIsNotNone(b.model)          # модель не тронута
+        self.assertEqual(b._model_state, "ready")
+
+    def test_reload_refuses_while_loading(self):
+        b = self.make()
+        with b._load_lock:                     # имитируем идущую загрузку
+            self.assertFalse(b.reload_model())
+        self.assertIsNotNone(b.model)
+
+    def test_reload_when_idle_clears_model(self):
+        b = self.make()
+        with mock.patch.object(b, "preload_async") as preload:
+            self.assertTrue(b.reload_model())
+        preload.assert_called_once()
+        self.assertIsNone(b.model)
+        self.assertIsNone(b.tokenizer)
+        self.assertEqual(b._model_state, "idle")

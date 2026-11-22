@@ -148,6 +148,15 @@ class AppTests(unittest.TestCase):
         self.assertIn("2+2", exported.get_data(as_text=True))
         self.assertIn("\ufeff", exported.get_data(as_text=True))
 
+    def test_csv_export_keeps_negative_numbers_and_escapes_formulas(self):
+        bot = self.app.config["BOT"]
+        bot.calculator_history.add("0 - 5", "0 - 5 = -5")
+        bot.calculator_history.add("=cmd|' /C calc'!A0", "Не удалось вычислить")
+        text = self.c.get("/calculator/export.csv", headers=self.h).get_data(as_text=True)
+        self.assertIn(";-5\r\n", text)      # отрицательное число осталось числом
+        self.assertNotIn("'-5", text)
+        self.assertIn("'=cmd", text)        # формула по-прежнему экранирована
+
     def test_calculator_stats_api(self):
         bot = self.app.config["BOT"]
         bot.calculator_history.add("2+2", "2 + 2 = 4")

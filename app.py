@@ -243,7 +243,13 @@ def create_app(chatbot: ChatBot | None = None, port: int = PORT, preload: bool =
             writer.writerow(["ID", "Дата (UTC)", "Выражение", "Ответ", "Результат"])
             def safe_cell(value):
                 value = "" if value is None else str(value)
-                return "'" + value if value.startswith(("=", "+", "-", "@", "\t", "\r")) else value
+                if not value.startswith(("=", "+", "-", "@", "\t", "\r")):
+                    return value
+                try:
+                    float(value.replace(",", "."))   # обычное число, в т.ч. отрицательное
+                except ValueError:
+                    return "'" + value               # потенциальная формула — экранируем
+                return value
             for row in rows:
                 writer.writerow([row["id"], row["created_at"], safe_cell(row["expression"]),
                                  safe_cell(row["answer"]), safe_cell(row["result"])])

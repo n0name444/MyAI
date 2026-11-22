@@ -323,13 +323,18 @@ class ChatBot:
         threading.Thread(target=self._ensure_model, name="myai-model-loader", daemon=True).start()
 
     def reload_model(self) -> bool:
-        """Повторная попытка загрузки после ошибки."""
+        """Повторная попытка загрузки после ошибки. Во время генерации не перезагружаем."""
         if not self._load_lock.acquire(blocking=False):
             return False  # загрузка уже идёт
         try:
-            self.model = None
-            self.tokenizer = None
-            self._model_state, self._model_error = "idle", None
+            if not self._gen_lock.acquire(blocking=False):
+                return False  # идёт генерация — обнулять модель нельзя
+            try:
+                self.model = None
+                self.tokenizer = None
+                self._model_state, self._model_error = "idle", None
+            finally:
+                self._gen_lock.release()
         finally:
             self._load_lock.release()
         self.preload_async()
